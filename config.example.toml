@@ -1,0 +1,135 @@
+# claude-statusline configuration
+#
+# Every value here is a DEFAULT -- your file is layered over the built-ins, so
+# delete anything you don't want to override. Run `claude-statusline doctor`
+# after editing to check contrast and see which tiers were detected.
+
+order = ["model", "context", "cost", "limits", "dir", "git"]
+
+[display]
+icons     = "nerd"   # nerd | unicode | ascii -- "ascii" is text labels
+                     # ("Model:", "Ctx:", ...) and needs no font at all
+caps      = "round"  # round | arrow | block | none
+                     # round and arrow are Nerd Font glyphs; pair the
+                     # ascii tier with "none"
+color     = "auto"   # auto | true | 256 | 16 | none
+icon_gap  = "  "     # between a section icon and its text
+pad       = " "      # inside each pill
+sep       = " "      # between pills
+git_cache = "2s"     # "0" disables the git cache
+dir_label = true     # "Dir: ~" vs just "~"
+
+# Appended to the effort label when ultracode is detected, e.g.
+# "Opus 5 (XHigh Ultra)". Set to "" to disable.
+#
+# Detection is limited, and deliberately does not pretend otherwise. Ultracode
+# is a session boolean that forces effort to xhigh -- it is NOT an effort level
+# -- and the statusLine payload does not expose it: a live capture with
+# ultracode active reports plain {"effort":{"level":"xhigh"}} and nothing else
+# differs. So the marker shows only when BOTH:
+#   * effort is xhigh (ultracode always forces this), AND
+#   * ultracode is enabled in ~/.claude/settings.json, or
+#     CLAUDE_STATUSLINE_ULTRACODE=1 is set (the env var wins).
+# Invoking ultracode per-prompt via the keyword leaves no trace the status line
+# can observe, so the marker will not appear for that usage.
+ultracode_label = "Ultra"
+
+# Countdown to quota reset on the limits pill, e.g. "5h 91% ·8m".
+#   "never"  | "warn" (default: only once a window is elevated) | "always"
+#
+# Worth having because the percentages are integers and a single turn is often
+# well under 1% of a 5-hour budget -- the number can sit unchanged for many
+# turns and look stale when it simply has nothing new to report. The countdown
+# is what makes a static value interpretable: 64% with five hours to go is a
+# problem, 64% with eight minutes to go is not.
+limits_reset = "warn"
+
+[context]
+warn = 50.0
+crit = 80.0
+
+[limits]
+warn = 50.0
+crit = 80.0
+
+# Overrides applied only on 256-colour terminals (macOS Terminal.app is the
+# common one; iTerm2, WezTerm and Ghostty do truecolor and ignore this).
+#
+# The xterm palette has no dark, muted entries at all -- its colour cube steps
+# 0, 95, 135, and every colour below sits between 42 and 92, inside that first
+# gap. Nearest-match rounds them all upward, so the bar drew visibly lighter
+# than the theme. These hold lightness instead, taking a more saturated hue in
+# exchange, which is the only trade the palette offers.
+#
+# Dir is not listed because it cannot be helped: it wants a dark blue-grey, the
+# only two dark blues are spent below, and everything else in range is a grey
+# that would collide with git. It draws lighter than it should.
+[theme_256]
+#effort_high = 17
+#ctx_warn    = 58
+#cost        = 53
+#limits      = 18
+
+[theme]
+# Model background per effort level. No amber or red here on purpose: those
+# are the alarm colours owned by the context and limits meters, and the model
+# pill sits directly beside context. Effort is a mode, not a warning.
+effort_low    = "#444444"
+effort_medium = "#005f87"
+effort_high   = "#000075"
+effort_xhigh  = "#87005f"
+effort_max    = "#b02a7a"
+model_default = "#5f0087"
+
+# ok is muted so it blends; warn/crit get louder so an alarm actually alarms.
+ctx_ok   = "#3d5a45"
+ctx_warn = "#70551f"
+ctx_crit = "#8a2b2b"
+
+cost = "#5b3f5c"
+
+# Limits keeps ONE background so the pill's identity never shifts; severity
+# rides on the per-window number colour, which also lets 5h and 7d differ.
+#
+# The background is deliberately dark: the warn/crit colours are drawn ON it,
+# so they must be measured against THIS value rather than the terminal
+# background. At the original #463c78 they scored 4.47 and 3.47 -- both under
+# the 4.5 AA floor. Darkening the background fixes that while keeping the text
+# saturated; lightening the text instead passes the contrast check but makes a
+# critical percentage read as pastel rather than as an alarm.
+limits         = "#332a5c"   # warn 5.99, crit 4.65 against this
+limits_warn_fg = "#e8a33d"
+limits_crit_fg = "#ff6b6b"
+limits_dim_fg  = "#9a93c4"   # reset countdown; 4.52 against the background
+
+dir = "#2d3d5a"
+git = "#3a3a3a"
+
+text     = "#ffffff"
+diff_add = "#87d787"
+diff_del = "#ff5f5f"
+
+# Claude Code reports context_window_size = 200000 even for models whose real
+# window is 1M, making its used_percentage ~5x too high. First match wins;
+# unmatched models fall back to whatever Claude Code reported.
+[[context_window]]
+match = "^claude-(opus|sonnet|fable|mythos)-(5|4-[6-9])"
+size  = 1000000
+
+[[context_window]]
+match = "^claude-haiku-4-5"
+size  = 200000
+
+# Raw model IDs -> display names.
+[model_names]
+"^claude-opus-5"     = "Opus 5"
+"^claude-sonnet-5"   = "Sonnet 5"
+"^claude-fable-5"    = "Fable 5"
+"^claude-mythos-5"   = "Mythos 5"
+"^claude-opus-4-8"   = "Opus 4.8"
+"^claude-opus-4-7"   = "Opus 4.7"
+"^claude-opus-4-6"   = "Opus 4.6"
+"^claude-opus-4-5"   = "Opus 4.5"
+"^claude-sonnet-4-6" = "Sonnet 4.6"
+"^claude-sonnet-4-5" = "Sonnet 4.5"
+"^claude-haiku-4-5"  = "Haiku 4.5"

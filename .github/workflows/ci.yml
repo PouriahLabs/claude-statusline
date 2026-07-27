@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: true
+      - name: gofmt
+        if: matrix.os == 'ubuntu-latest'
+        shell: bash
+        run: |
+          unformatted=$(gofmt -l .)
+          [ -z "$unformatted" ] || { echo "not gofmt-clean:"; echo "$unformatted"; exit 1; }
+      - run: go vet ./...
+      - run: go test ./...
+      - run: go build ./...
+
+      # install.ps1 is never executed by CI, which is how a checksum parse
+      # that matched nothing shipped in every release. Parsing it at least
+      # stops a syntax error reaching users who cannot see it until it runs.
+      - name: parse install.ps1
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $errs = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            (Resolve-Path install.ps1), [ref]$null, [ref]$errs) | Out-Null
+          if ($errs) { $errs | ForEach-Object { Write-Host $_ }; exit 1 }
+          Write-Host 'install.ps1 parses'
+
+      # The status line must render on a machine with no config, no Nerd Font
+      # and no git repo -- that is every user's first run.
+      - name: smoke test (no config, empty payload)
+        shell: bash
+        run: |
+          echo '{}' | go run . > /dev/null
+          echo '{"model":{"id":"claude-opus-5"}}' | go run . --icons ascii --color none
