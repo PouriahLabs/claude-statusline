@@ -280,3 +280,20 @@ func TestClip(t *testing.T) {
 		}
 	}
 }
+
+// The working directory here is inside a git repo, so a bar that asked git
+// would get a branch back; one without the git pill must not have asked.
+func TestGitIsOnlyReadWhenTheBarShowsIt(t *testing.T) {
+	p := input.Payload{CWD: "."}
+	b := builder()
+	b.Cfg.Display.GitCache = "0"
+
+	b.Cfg.Order = []string{"model", "dir"}
+	if got := b.gitInfo(p); got != (gitinfo.Info{}) {
+		t.Errorf("git read without a git pill: %+v", got)
+	}
+	b.Cfg.Order = []string{"model", "git"}
+	if got := b.gitInfo(p); !got.IsRepo {
+		t.Skip("not running inside a git checkout")
+	}
+}

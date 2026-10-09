@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -100,14 +101,23 @@ func clip(s string, limit int) string {
 
 // Build assembles the pills named in cfg.Order, skipping any with no data.
 func (b Builder) Build(p input.Payload) []render.Segment {
-	return b.build(p, gitinfo.Get(p.Dir(), b.Cfg.Display.CacheTTL()))
+	return b.build(p, b.gitInfo(p))
+}
+
+// gitInfo reads git state only if the git pill is in the bar: it shells out,
+// and a bar without the pill has no use for the answer.
+func (b Builder) gitInfo(p input.Payload) gitinfo.Info {
+	if !slices.Contains(b.Cfg.Order, "git") {
+		return gitinfo.Info{}
+	}
+	return gitinfo.Get(p.Dir(), b.Cfg.Display.CacheTTL())
 }
 
 // Layouts returns a function that builds the pills at a given level. Git state
 // is read once and shared: a bar that has to try several levels must not pay
 // for several sets of git calls.
 func (b Builder) Layouts(p input.Payload) func(level int) []render.Segment {
-	git := gitinfo.Get(p.Dir(), b.Cfg.Display.CacheTTL())
+	git := b.gitInfo(p)
 	return func(level int) []render.Segment {
 		b.Level = level
 		return b.build(p, git)
