@@ -83,6 +83,10 @@ The git pill already worked this way (`+121` green, `-55` red on neutral grey). 
 
 The 256-colour search also starts at index 16. The basic sixteen are whatever the user's terminal theme says they are, so matching into that range makes a hex colour render differently under every colour scheme. Everything from 16 up is fixed by the xterm specification.
 
+**The bar fits itself to the terminal, by giving things up in a fixed order.** Claude Code truncates a status line that is too wide, and the pill at the right edge is the git one — the thing most likely to be cut. Every pill is built at one of four compaction levels (`segments.Levels`), and `render.Fit` draws the most detailed level that fits on one line. Detail goes in order of how little understanding it costs: token counts, cost burn rate and the `Dir:` label; then git diff counts, the icon gap and long names; the quota reset countdown goes last because it only appears once a window is elevated, which is exactly when it is worth its width. Only if the tightest level still doesn't fit does the bar wrap, and then it uses the most detailed level that needs no more rows than the tightest would — compacting to save a row is worth it, compacting on top of a wrap is not. A single pill wider than the terminal is truncated with an ellipsis rather than left to overflow.
+
+**The width is a best effort.** The payload has no width field and stdout is a pipe, so `internal/termwidth` opens the controlling terminal itself (`/dev/tty`, or `CONOUT$` on Windows) and falls back to `$COLUMNS`. Whether Claude Code leaves its status line subprocess attached to that terminal is not something the code can guarantee, so an undetectable width means the full bar is drawn exactly as before, and `display.width` pins it by hand. Wrapping assumes Claude Code renders a multi-line status line as multiple rows.
+
 **Git state is cached** behind a short TTL. Three `git` invocations per repaint measured ~85 ms on a real repository, and the status line repaints constantly. The cache is a temp file keyed by repo path, written via write-then-rename so a concurrent reader never sees a partial file.
 
 ## The screenshots

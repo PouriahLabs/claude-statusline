@@ -28,6 +28,13 @@ type Display struct {
 	// LimitsReset controls the reset countdown on the quota pill:
 	// "never" | "warn" (default, only once a window is elevated) | "always".
 	LimitsReset string `toml:"limits_reset"`
+	// Width is the number of cells the bar may use. 0 detects the terminal
+	// (see internal/termwidth) and subtracts Margin; a positive value is used
+	// exactly as given; -1 turns fitting off and always draws the full bar.
+	Width int `toml:"width"`
+	// Margin is held back from a detected width for whatever Claude Code draws
+	// around the status line. Ignored when Width is set explicitly.
+	Margin int `toml:"margin"`
 }
 
 // Thresholds are percentages at which a meter escalates.
@@ -142,7 +149,7 @@ func Default() Config {
 			Icons: "nerd", Caps: "round", Color: "auto",
 			IconGap: "  ", Pad: " ", Sep: " ",
 			GitCache: "2s", DirLabel: true, UltracodeLabel: "Ultra",
-			LimitsReset: "warn",
+			LimitsReset: "warn", Margin: 4,
 		},
 		Context: Thresholds{Warn: 50, Crit: 80},
 		Limits:  Thresholds{Warn: 50, Crit: 80},

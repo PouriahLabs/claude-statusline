@@ -8,6 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/PouriahLabs/claude-statusline/internal/config"
 	"github.com/PouriahLabs/claude-statusline/internal/gitinfo"
@@ -26,10 +27,23 @@ var icons = map[string][3]string{
 	"dir":     {"Dir:", "⌂", ""},
 }
 
+// Levels is how many compaction levels a Builder can render, 0 through
+// Levels-1. Level 0 is the full bar; each step gives up detail in the order
+// that costs the least understanding:
+//
+//	1  the "Dir:" label, the cost burn rate, the context token counts
+//	2  icon gap to one space, the git diff counts, long names clipped to 24
+//	3  the quota reset countdown, names clipped to 14
+//
+// The countdown goes last because it only shows once a window is elevated --
+// it is the detail most likely to be worth its width.
+const Levels = 4
+
 type Builder struct {
 	Cfg   config.Config
 	Tier  render.IconTier
 	Color render.ColorTier
+	Level int // compaction level; see Levels
 }
 
 func (b Builder) icon(name string) string {
@@ -47,7 +61,7 @@ func (b Builder) label(name, text string) string {
 		return text
 	}
 	gap := b.Cfg.Display.IconGap
-	if b.Tier == render.IconASCII {
+	if b.Tier == render.IconASCII || (b.Level >= 2 && utf8.RuneCountInString(gap) > 1) {
 		gap = " " // a text label already reads as separated
 	}
 	return ic + gap + text
@@ -61,10 +75,47 @@ func (b Builder) col(s config.ColorValue) render.Color {
 	return c
 }
 
+// nameCap is the longest branch or directory name shown at b.Level, in runes.
+// Zero means no limit.
+func (b Builder) nameCap() int {
+	switch {
+	case b.Level >= 3:
+		return 14
+	case b.Level == 2:
+		return 24
+	}
+	return 0
+}
+
+// clip shortens s to at most limit runes, ending in an ellipsis. Cell width is
+// the renderer's concern; this only has to keep a long name from dominating
+// the bar, and render.Fit truncates whatever still overflows.
+func clip(s string, limit int) string {
+	r := []rune(s)
+	if limit <= 0 || len(r) <= limit {
+		return s
+	}
+	return string(r[:limit-1]) + "…"
+}
+
 // Build assembles the pills named in cfg.Order, skipping any with no data.
 func (b Builder) Build(p input.Payload) []render.Segment {
-	text := b.col(b.Cfg.Theme.Text)
+	return b.build(p, gitinfo.Get(p.Dir(), b.Cfg.Display.CacheTTL()))
+}
+
+// Layouts returns a function that builds the pills at a given level. Git state
+// is read once and shared: a bar that has to try several levels must not pay
+// for several sets of git calls.
+func (b Builder) Layouts(p input.Payload) func(level int) []render.Segment {
 	git := gitinfo.Get(p.Dir(), b.Cfg.Display.CacheTTL())
+	return func(level int) []render.Segment {
+		b.Level = level
+		return b.build(p, git)
+	}
+}
+
+func (b Builder) build(p input.Payload, git gitinfo.Info) []render.Segment {
+	text := b.col(b.Cfg.Theme.Text)
 
 	var out []render.Segment
 	add := func(s string, bg render.Color) {
@@ -163,7 +214,10 @@ func (b Builder) context(p input.Payload) (string, render.Color, bool) {
 	switch {
 	case used > 0 && size > 0:
 		pct = float64(used) * 100 / float64(size)
-		txt = fmt.Sprintf("%d%% (%dk/%s)", int(pct), (used+500)/1000, humanSize(size))
+		txt = fmt.Sprintf("%d%%", int(pct))
+		if b.Level < 1 {
+			txt = fmt.Sprintf("%d%% (%dk/%s)", int(pct), (used+500)/1000, humanSize(size))
+		}
 	case p.Context.UsedPercentage > 0:
 		pct = p.Context.UsedPercentage
 		txt = fmt.Sprintf("%d%%", int(pct+0.5))
@@ -194,7 +248,7 @@ func (b Builder) cost(p input.Payload) string {
 	s := fmt.Sprintf("$%.2f", p.Cost.TotalCostUSD)
 	// total_duration_ms is active-work time, not wall clock, so this is a
 	// burn rate while working rather than cost-since-session-opened.
-	if p.Cost.TotalDurationMS > 60_000 {
+	if p.Cost.TotalDurationMS > 60_000 && b.Level < 1 {
 		hours := float64(p.Cost.TotalDurationMS) / 3_600_000
 		if hours > 0 {
 			s += fmt.Sprintf(" (%.2f/h)", p.Cost.TotalCostUSD/hours)
@@ -229,7 +283,7 @@ func (b Builder) limits(p input.Payload, text render.Color) string {
 
 		// Countdown to reset -- see reset.go for why a static percentage needs
 		// this to be readable.
-		if showReset(b.Cfg.Display.LimitsReset, float64(pct), b.Cfg.Limits.Warn) {
+		if b.Level < 3 && showReset(b.Cfg.Display.LimitsReset, float64(pct), b.Cfg.Limits.Warn) {
 			if rem := formatReset(w.ResetsAt, now); rem != "" {
 				seg += fmt.Sprintf(" %s·%s%s", dim.FG(b.Color), rem, text.FG(b.Color))
 			}
@@ -255,7 +309,8 @@ func (b Builder) dir(p input.Payload) string {
 			name = "~"
 		}
 	}
-	if b.Cfg.Display.DirLabel && b.Tier != render.IconASCII {
+	name = clip(name, b.nameCap())
+	if b.Cfg.Display.DirLabel && b.Tier != render.IconASCII && b.Level < 1 {
 		return "Dir: " + name
 	}
 	return name
@@ -264,7 +319,7 @@ func (b Builder) dir(p input.Payload) string {
 func (b Builder) git(g gitinfo.Info, p input.Payload, text render.Color) string {
 	add, del := p.Cost.LinesAdded, p.Cost.LinesRemoved
 	var diff string
-	if add != 0 || del != 0 {
+	if (add != 0 || del != 0) && b.Level < 2 {
 		diff = fmt.Sprintf("%s+%d%s -%d%s",
 			b.col(b.Cfg.Theme.DiffAdd).FG(b.Color), add,
 			b.col(b.Cfg.Theme.DiffDel).FG(b.Color), del,
@@ -274,7 +329,7 @@ func (b Builder) git(g gitinfo.Info, p input.Payload, text render.Color) string 
 		// Outside a repo the diff would otherwise be dropped entirely.
 		return diff
 	}
-	s := g.Branch
+	s := clip(g.Branch, b.nameCap())
 	if g.Dirty {
 		s += "*"
 	}

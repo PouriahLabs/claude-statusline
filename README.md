@@ -162,6 +162,15 @@ this. If the bar looks wrong rather than absent, `claude-statusline doctor`
 reports a config that failed to parse — one bad key falls back to *all* the
 defaults.
 
+**Narrow terminals.** The bar fits itself to the window. When it's too wide it
+gives up detail a step at a time — token counts, cost rate and the `Dir:` label
+first, then git diff counts, the quota countdown last — clips long branch and
+folder names, and wraps onto a second row only if that isn't enough. Claude Code
+doesn't tell the status line how wide the terminal is, so the width is read from
+the terminal directly; if the bar doesn't re-fit when you resize the window, pin
+it with `width = 100` under `[display]` (`-1` turns fitting off). `doctor`
+shows what it detected, and `--width N` tries a size without touching config.
+
 **Commands:** `init` (setup) · `preview` (compare tiers) · `doctor` (check the
 Claude Code wiring, diagnose config, audit contrast) · `uninstall` · `help`
 

@@ -20,6 +20,7 @@ import (
 	"github.com/PouriahLabs/claude-statusline/internal/input"
 	"github.com/PouriahLabs/claude-statusline/internal/render"
 	"github.com/PouriahLabs/claude-statusline/internal/segments"
+	"github.com/PouriahLabs/claude-statusline/internal/termwidth"
 	"github.com/PouriahLabs/claude-statusline/internal/wizard"
 )
 
@@ -41,6 +42,8 @@ Flags (apply to render and preview):
   --icons TIER    nerd | unicode | ascii
   --color TIER    true | 256 | 16 | none
   --caps TIER     round | arrow | block | none
+  --width N       fit the bar into N cells (default: detect the terminal;
+                  -1 never shrinks or wraps)
 
 Docs: https://github.com/PouriahLabs/claude-statusline
 `
@@ -51,6 +54,7 @@ func main() {
 		icons   = flag.String("icons", "", "override icon tier: nerd|unicode|ascii")
 		colors  = flag.String("color", "", "override colour tier: true|256|16|none")
 		caps    = flag.String("caps", "", "override pill caps: round|arrow|block|none")
+		width   = flag.Int("width", 0, "fit the bar into this many cells; -1 disables fitting")
 		showVer = flag.Bool("version", false, "print the version and exit")
 	)
 	flag.Usage = func() { fmt.Fprint(os.Stderr, usage) }
@@ -134,6 +138,9 @@ func main() {
 	if *caps != "" {
 		cfg.Display.Caps = *caps
 	}
+	if *width != 0 {
+		cfg.Display.Width = *width
+	}
 
 	line := build(cfg, input.Parse(os.Stdin))
 	os.Stdout.Write(append([]byte(line), '\n'))
@@ -174,7 +181,43 @@ func build(cfg config.Config, p input.Payload) string {
 	if cfg.Display.Sep != "" {
 		opts.Sep = cfg.Display.Sep
 	}
-	return render.Line(b.Build(p), opts)
+
+	cells, _ := budget(cfg)
+	pills := b.Layouts(p)
+	return render.Fit(segments.Levels, cells, func(level int) ([]render.Segment, render.Options) {
+		o := opts
+		// The tightest level also closes the gaps between pills. Without colour
+		// there is no fill to tell them apart, so the separator has to stay.
+		if level == segments.Levels-1 && o.Color != render.ColorNone {
+			o.Sep = ""
+		}
+		return pills(level), o
+	})
+}
+
+// minCells is the narrowest budget worth fitting to. Below it the terminal is
+// either mis-detected or too small for any layout to help, and a bar wrapped
+// one pill per row is worse than one the terminal clips.
+const minCells = 20
+
+// budget is how many cells the bar may use, or 0 for unlimited, and a note on
+// where that came from for `doctor`.
+func budget(cfg config.Config) (int, string) {
+	switch w := cfg.Display.Width; {
+	case w < 0:
+		return 0, "fitting off (width = -1)"
+	case w > 0:
+		return w, "fixed by width"
+	}
+	cols, src := termwidth.Detect()
+	if cols <= 0 {
+		return 0, "terminal width not detectable, drawing the full bar"
+	}
+	cells := cols - cfg.Display.Margin
+	if cells < minCells {
+		return 0, fmt.Sprintf("%d cols (%s) is too narrow to fit", cols, src)
+	}
+	return cells, fmt.Sprintf("%d cols (%s) - margin %d", cols, src, cfg.Display.Margin)
 }
 
 func samplePayload() input.Payload {
@@ -276,6 +319,16 @@ func doctor(cfgPath string) int {
 	}
 	fmt.Printf("icon tier   : %q\n", cfg.Display.Icons)
 	fmt.Printf("git cache   : %v\n", cfg.Display.CacheTTL())
+	cells, how := budget(cfg)
+	if cells > 0 {
+		fmt.Printf("fit width   : %d cells <- %s\n", cells, how)
+	} else {
+		fmt.Printf("fit width   : unlimited -- %s\n", how)
+	}
+	// What Claude Code's own subprocess can see is not necessarily what this
+	// shell sees, and there is no way to ask it from here.
+	fmt.Printf("              measured from this shell; if the bar doesn't re-fit when you\n")
+	fmt.Printf("              resize Claude Code's window, set width under [display]\n")
 
 	bad := 0
 	if !checkWiring() {

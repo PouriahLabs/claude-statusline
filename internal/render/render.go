@@ -93,45 +93,48 @@ func DefaultOptions() Options {
 // Line renders all segments into a single status line.
 func Line(segs []Segment, o Options) string {
 	var b strings.Builder
-	capL, capR := o.Caps.glyphs()
 	for i, s := range segs {
 		if i > 0 {
 			b.WriteString(o.Sep)
 		}
-		if o.Color == ColorNone {
-			// Strip embedded SGR from Text too -- a NO_COLOR consumer means it.
-			b.WriteString(stripSGR(s.Text))
-			continue
-		}
-		// The caps are drawn in the fill colour against the terminal's own
-		// background; that is what makes the pill look detached rather than
-		// part of a continuous bar.
-		if capL != "" {
-			b.WriteString(s.BG.FG(o.Color) + capL)
-		}
-		b.WriteString(s.BG.BG(o.Color))
-		b.WriteString(s.FG.FG(o.Color))
-		b.WriteString(o.Pad + s.Text + o.Pad)
-		b.WriteString(o.Reset)
-		if capR != "" {
-			b.WriteString(s.BG.FG(o.Color) + capR + o.Reset)
-		}
+		b.WriteString(o.pill(s))
+	}
+	return b.String()
+}
+
+// pill draws one segment, caps and padding included.
+func (o Options) pill(s Segment) string {
+	if o.Color == ColorNone {
+		// Strip embedded SGR from Text too -- a NO_COLOR consumer means it.
+		return stripSGR(s.Text)
+	}
+	capL, capR := o.Caps.glyphs()
+	var b strings.Builder
+	// The caps are drawn in the fill colour against the terminal's own
+	// background; that is what makes the pill look detached rather than
+	// part of a continuous bar.
+	if capL != "" {
+		b.WriteString(s.BG.FG(o.Color) + capL)
+	}
+	b.WriteString(s.BG.BG(o.Color))
+	b.WriteString(s.FG.FG(o.Color))
+	b.WriteString(o.Pad + s.Text + o.Pad)
+	b.WriteString(o.Reset)
+	if capR != "" {
+		b.WriteString(s.BG.FG(o.Color) + capR + o.Reset)
 	}
 	return b.String()
 }
 
 func stripSGR(s string) string {
 	var b strings.Builder
-	for i := 0; i < len(s); i++ {
-		if s[i] == 0x1b && i+1 < len(s) && s[i+1] == '[' {
-			j := i + 2
-			for j < len(s) && s[j] != 'm' {
-				j++
-			}
-			i = j
+	for i := 0; i < len(s); {
+		if k := sgrLen(s[i:]); k > 0 {
+			i += k
 			continue
 		}
 		b.WriteByte(s[i])
+		i++
 	}
 	return b.String()
 }
