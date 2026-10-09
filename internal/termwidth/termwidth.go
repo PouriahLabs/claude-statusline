@@ -15,13 +15,19 @@ import (
 // Detect returns the terminal width in columns and a short note on where it
 // came from, or 0 and "" when it cannot be found.
 //
-// The terminal is asked before COLUMNS because it is live: COLUMNS is only
-// present if the user exported it, and then reflects the size at export time.
+// COLUMNS wins because Claude Code sets it for the status line subprocess from
+// its own terminal. The terminal query is only the fallback: on Windows the
+// subprocess gets a private console with the default 120-column window (logged
+// at 120 while the real terminal and COLUMNS were 210), so asking it first
+// fitted the bar to a width that does not exist.
 func Detect() (cols int, source string) {
+	if c, src := fromEnv(os.Getenv); c > 0 {
+		return c, src
+	}
 	if c := console(); c > 0 {
 		return c, "terminal"
 	}
-	return fromEnv(os.Getenv)
+	return 0, ""
 }
 
 func fromEnv(getenv func(string) string) (int, string) {

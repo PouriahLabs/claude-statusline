@@ -24,8 +24,8 @@ dir_label = true     # "Dir: ~" vs just "~"
 # the git diff counts and the icon gap, then the quota reset countdown -- clips
 # long branch/dir names, and only wraps onto a second row if that is not enough.
 #
-# Claude Code does not pass the terminal width in, so it is read from the
-# terminal itself (falling back to $COLUMNS). That is a best effort: if the bar
+# Claude Code sets $COLUMNS for the status line; without it the terminal is
+# queried directly. That is a best effort: if the bar
 # does not re-fit when you resize the window, set `width` by hand.
 #   0   detect the terminal, minus `margin`   (default)
 #   N   use exactly N cells, no detection
