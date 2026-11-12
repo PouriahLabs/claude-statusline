@@ -124,6 +124,15 @@ type Config struct {
 	Theme256   Theme             `toml:"theme_256"`
 	Windows    []ContextWindow   `toml:"context_window"`
 	ModelNames map[string]string `toml:"model_names"`
+	Forward    Forward           `toml:"forward"`
+}
+
+// Forward re-posts the raw status line payload to a local listener after the
+// bar is printed (e.g. the Tokenomics app, which reads context %, cost and rate
+// limits from it). Off unless a URL is set.
+type Forward struct {
+	URL     string `toml:"url"`     // e.g. "http://127.0.0.1:53821/statusline"
+	Timeout string `toml:"timeout"` // whole request budget; default "150ms"
 }
 
 // Resolve returns the theme to render with at the given colour tier, applying

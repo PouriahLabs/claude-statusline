@@ -9,14 +9,17 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"time"
 
 	"github.com/PouriahLabs/claude-statusline/internal/claudecode"
 	"github.com/PouriahLabs/claude-statusline/internal/config"
+	"github.com/PouriahLabs/claude-statusline/internal/forward"
 	"github.com/PouriahLabs/claude-statusline/internal/input"
 	"github.com/PouriahLabs/claude-statusline/internal/render"
 	"github.com/PouriahLabs/claude-statusline/internal/segments"
@@ -142,8 +145,12 @@ func main() {
 		cfg.Display.Width = *width
 	}
 
-	line := build(cfg, input.Parse(os.Stdin))
+	raw, _ := io.ReadAll(os.Stdin)
+	line := build(cfg, input.Parse(bytes.NewReader(raw)))
 	os.Stdout.Write(append([]byte(line), '\n'))
+	if cfg.Forward.URL != "" {
+		forward.Send(cfg.Forward.URL, raw, forward.Timeout(cfg.Forward.Timeout))
+	}
 }
 
 // stdinIsTerminal reports whether stdin is a console rather than a pipe or a

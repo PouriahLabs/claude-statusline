@@ -147,3 +147,10 @@ size  = 200000
 "^claude-sonnet-4-6" = "Sonnet 4.6"
 "^claude-sonnet-4-5" = "Sonnet 4.5"
 "^claude-haiku-4-5"  = "Haiku 4.5"
+
+# Re-post each status line payload to a local listener after the bar prints.
+# The Tokenomics app reads exact context %, cost and rate limits from it.
+# Loopback http URLs only; off unless url is set.
+# [forward]
+# url     = "http://127.0.0.1:53821/statusline"
+# timeout = "150ms"
